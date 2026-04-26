@@ -2,6 +2,8 @@
 
 import asyncio
 from abc import ABC, abstractmethod
+from functools import lru_cache
+import threading
 from typing import Any
 
 import structlog
@@ -107,22 +109,25 @@ class LocalEmbeddingProvider(EmbeddingProvider):
         self.model_name = model_name or settings.embedding_model
         self._model: Any = None
         self._dimension = 1024  # Qwen/Qwen3-Embedding-0.6B default
+        self._model_lock = threading.Lock()
         self.cache = EmbeddingCache()
 
     def _load_model(self) -> Any:
         """Lazy-load the sentence-transformers model."""
         if self._model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
+            with self._model_lock:
+                if self._model is None:
+                    try:
+                        from sentence_transformers import SentenceTransformer
 
-                logger.info("Loading local embedding model", model=self.model_name)
-                self._model = SentenceTransformer(self.model_name)
-                self._dimension = self._model.get_sentence_embedding_dimension()
-            except ImportError as e:
-                raise ClusteringError(
-                    "sentence-transformers not installed. "
-                    "Install with: uv pip install sentence-transformers"
-                ) from e
+                        logger.info("Loading local embedding model", model=self.model_name)
+                        self._model = SentenceTransformer(self.model_name)
+                        self._dimension = self._model.get_sentence_embedding_dimension()
+                    except ImportError as e:
+                        raise ClusteringError(
+                            "sentence-transformers not installed. "
+                            "Install with: uv pip install sentence-transformers"
+                        ) from e
         return self._model
 
     @property
@@ -175,9 +180,21 @@ class LocalEmbeddingProvider(EmbeddingProvider):
         return [embedding for embedding in cached_embeddings if embedding is not None]
 
 
+@lru_cache(maxsize=4)
+def _get_openai_provider(model: str, api_key: str) -> OpenAIEmbeddingProvider:
+    return OpenAIEmbeddingProvider(model=model, api_key=api_key)
+
+
+@lru_cache(maxsize=4)
+def _get_local_provider(model_name: str) -> LocalEmbeddingProvider:
+    return LocalEmbeddingProvider(model_name=model_name)
+
+
 def get_embedding_provider() -> EmbeddingProvider:
     """Factory function to get the appropriate embedding provider."""
     settings = get_settings()
     if settings.embedding_backend == "openai":
-        return OpenAIEmbeddingProvider()
-    return LocalEmbeddingProvider()
+        if not settings.openai_api_key:
+            return OpenAIEmbeddingProvider()
+        return _get_openai_provider(settings.embedding_model, settings.openai_api_key)
+    return _get_local_provider(settings.embedding_model)
