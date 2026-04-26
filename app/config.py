@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     app_name: str = Field(default="pulse-agent")
     app_version: str = Field(default="0.1.0")
     debug: bool = Field(default=False)
+    allowed_origins: list[str] = Field(default_factory=list, alias="ALLOWED_ORIGINS")
 
     @field_validator("debug", mode="before")
     @classmethod
@@ -51,6 +52,18 @@ class Settings(BaseSettings):
                 "openai-compatible": "custom",
             }
             return aliases.get(normalized, normalized)
+        return value
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, value: object) -> object:
+        """Accept comma-separated origins from deployment environments."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        if isinstance(value, list):
+            return [str(origin).strip() for origin in value if str(origin).strip()]
         return value
 
     # Database

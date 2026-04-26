@@ -1,0 +1,16 @@
+app = "pulse-agent-docs"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  app = "uvicorn mcp_servers.docs_server:app --host 0.0.0.0 --port 5000"
+
+[env]
+  PYTHONPATH = "/app"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

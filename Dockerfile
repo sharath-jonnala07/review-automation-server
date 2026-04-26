@@ -28,13 +28,15 @@ COPY data/ ./data/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY prompts/ ./prompts/
+COPY boot.sh ./boot.sh
 
 # Create data directory
 RUN mkdir -p data/raw data/artifacts
+RUN chmod +x ./boot.sh
 
 ENV PYTHONPATH=/app
 ENV DATABASE_URL=sqlite+aiosqlite:///./data/pulse.db
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["bash", "./boot.sh"]

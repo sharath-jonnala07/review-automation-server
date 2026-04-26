@@ -1,0 +1,37 @@
+app = "pulse-agent-api-sharath"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  PYTHONPATH = "/app"
+  DATABASE_URL = "sqlite+aiosqlite:////data/pulse.db"
+  DOCS_MCP_URL = "http://pulse-agent-docs.internal:5000"
+  GMAIL_MCP_URL = "http://pulse-agent-gmail.internal:5001"
+  CONFIRM_SEND = "true"
+  ALLOWED_ORIGINS = "https://pulse-agent-web.fly.dev"
+
+[[mounts]]
+  source = "pulse_api_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "30s"
+  method = "GET"
+  path = "/health"

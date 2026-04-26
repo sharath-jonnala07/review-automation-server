@@ -1,0 +1,15 @@
+.env
+.venv
+venv
+__pycache__
+.pytest_cache
+.ruff_cache
+.mypy_cache
+tests
+htmlcov
+*.pyc
+*.pyo
+*.pyd
+*.log
+data/raw
+data/artifacts
