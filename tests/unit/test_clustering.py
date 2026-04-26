@@ -7,6 +7,7 @@ import pytest
 
 from app.clustering.cache import EmbeddingCache
 from app.clustering.clusterer import ReviewClusterer
+from app.clustering.embeddings import _normalize_huggingface_embeddings
 from app.core.exceptions import ClusteringError
 
 
@@ -90,3 +91,58 @@ class TestReviewClusterer:
         assert len(clusters) == 3
         assert set(labels) == {0, 1, 2}
         assert any(min_cluster_size == 6 for min_cluster_size, _ in attempts)
+
+    def test_clusterer_enforces_minimum_clusters_when_retries_stall(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Should split the largest group when HDBSCAN never reaches the target."""
+        clusterer = ReviewClusterer(min_cluster_size=8, min_samples=2)
+
+        monkeypatch.setattr(clusterer, "_reduce_dimensions", lambda embeddings: np.array(embeddings))
+        monkeypatch.setattr(
+            clusterer,
+            "_cluster",
+            lambda reduced, *, min_cluster_size=None, min_samples=None: np.array(
+                [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1]
+            ),
+        )
+        monkeypatch.setattr(clusterer, "_find_medoid", lambda embeddings, indices: indices[0])
+        monkeypatch.setattr(clusterer, "_extract_keyphrases", lambda texts, indices: [texts[indices[0]]])
+
+        clusters, labels = clusterer.cluster_reviews(
+            embeddings=[[float(i), float(i % 3)] for i in range(12)],
+            texts=[f"review-{i}" for i in range(12)],
+            target_clusters=3,
+        )
+
+        assert len(clusters) == 3
+        assert set(labels) == {0, 1, 2}
+        assert sorted(len(cluster.review_indices) for cluster in clusters) == [3, 3, 6]
+
+
+class TestHuggingFaceEmbeddingNormalization:
+    """Normalization tests for Hugging Face hosted embedding responses."""
+
+    def test_normalizes_sentence_vectors(self) -> None:
+        payload = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+
+        normalized = _normalize_huggingface_embeddings(payload)
+
+        assert normalized == payload
+
+    def test_averages_token_level_embeddings(self) -> None:
+        payload = [
+            [
+                [1.0, 3.0],
+                [3.0, 5.0],
+            ]
+        ]
+
+        normalized = _normalize_huggingface_embeddings(payload)
+
+        assert normalized == [[2.0, 4.0]]
+
+    def test_rejects_invalid_payloads(self) -> None:
+        with pytest.raises(ClusteringError):
+            _normalize_huggingface_embeddings({"embedding": [0.1, 0.2]})

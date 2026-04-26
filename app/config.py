@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     # Embeddings
     embedding_backend: str = Field(default="huggingface-local", alias="EMBEDDING_BACKEND")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    huggingface_api_key: str | None = Field(default=None, alias="HUGGINGFACE_API_KEY")
+    huggingface_api_url: str = Field(
+        default="https://router.huggingface.co/hf-inference/models",
+        alias="HUGGINGFACE_API_URL",
+    )
     embedding_model: str = Field(
         default="Qwen/Qwen3-Embedding-0.6B",
         alias="EMBEDDING_MODEL",
@@ -118,9 +123,14 @@ class Settings(BaseSettings):
             normalized = value.strip().lower()
             aliases = {
                 "huggingface": "huggingface-local",
+                "huggingface-api": "huggingface-api",
+                "huggingface-inference": "huggingface-api",
                 "hf": "huggingface-local",
+                "hf-api": "huggingface-api",
+                "hf-inference": "huggingface-api",
                 "local": "huggingface-local",
                 "sentence-transformers": "huggingface-local",
+                "inference-api": "huggingface-api",
                 "openai": "openai",
             }
             return aliases.get(normalized, normalized)

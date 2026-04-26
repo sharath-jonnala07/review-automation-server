@@ -39,6 +39,7 @@ class FakeLLMClient:
                 }
             )
         if output_schema.__name__ == "ActionOutput":
+            action_count = max(1, variables.get("themes", "").count("\n\n") + 1)
             return output_schema.model_validate(
                 {
                     "actions": [
@@ -46,6 +47,7 @@ class FakeLLMClient:
                             "title": "Improve market-hour performance",
                             "description": "Profile slow screens and prioritize chart loading fixes.",
                         }
+                        for _ in range(action_count)
                     ]
                 }
             )
@@ -139,3 +141,45 @@ def test_summarize_backfills_actions_for_each_theme() -> None:
     assert summary.action_ideas[0].title == "Improve market-hour performance"
     assert summary.action_ideas[1].theme_id == summary.top_themes[1].id
     assert summary.action_ideas[2].theme_id == summary.top_themes[2].id
+
+
+def test_summarize_includes_all_clusters_as_themes() -> None:
+    """All generated clusters should be promoted into themes, not just the first three."""
+    reviews = [
+        RawReview(
+            id=ReviewId(f"review-{index}"),
+            product_key=ProductKey("groww"),
+            source="playstore",
+            rating=4,
+            body=f"Review body {index} about theme {index}",
+            posted_at=datetime(2026, 4, 26, tzinfo=UTC),
+        )
+        for index in range(8)
+    ]
+    clusters = [
+        Cluster(id=index, review_indices=[index, index + 1], medoid_index=index, keyphrases=[f"theme-{index}"])
+        for index in range(4)
+    ]
+    engine = SummarizationEngine(llm_client=FakeLLMClient())
+
+    async def no_quotes(
+        theme_label: str,
+        theme_description: str,
+        cluster_reviews: list[RawReview],
+    ) -> list[object]:
+        return []
+
+    engine.select_quotes = no_quotes  # type: ignore[method-assign]
+
+    summary = asyncio.run(
+        engine.summarize(
+            product=ProductKey("groww"),
+            window=Window(start=date(2026, 4, 20), end=date(2026, 4, 26), weeks=1),
+            reviews=reviews,
+            clusters=clusters,
+        )
+    )
+
+    assert len(summary.top_themes) == 4
+    assert len(summary.action_ideas) == 4
+    assert [theme.rank for theme in summary.top_themes] == [1, 2, 3, 4]

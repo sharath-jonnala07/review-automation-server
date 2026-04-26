@@ -236,7 +236,7 @@ class SummarizationEngine:
             return theme, themed_quotes
 
         theme_results = await asyncio.gather(
-            *(build_theme(rank, cluster) for rank, cluster in enumerate(clusters[:3], 1))
+            *(build_theme(rank, cluster) for rank, cluster in enumerate(clusters, 1))
         )
         for theme, quotes in theme_results:
             themes.append(theme)

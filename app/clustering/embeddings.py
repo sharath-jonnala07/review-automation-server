@@ -6,6 +6,8 @@ from functools import lru_cache
 import threading
 from typing import Any
 
+import httpx
+import numpy as np
 import structlog
 from openai import AsyncOpenAI
 
@@ -17,6 +19,32 @@ logger = structlog.get_logger()
 
 # Type alias for embeddings
 EmbeddingVector = list[float]
+
+
+def _normalize_huggingface_embeddings(payload: object) -> list[EmbeddingVector]:
+    """Normalize Hugging Face inference payloads into sentence vectors."""
+    if not isinstance(payload, list):
+        raise ClusteringError("Hugging Face embeddings response was not a list")
+
+    normalized: list[EmbeddingVector] = []
+    for item in payload:
+        if not isinstance(item, list) or not item:
+            raise ClusteringError("Hugging Face embeddings item was not a non-empty list")
+
+        if isinstance(item[0], (int, float)):
+            normalized.append([float(value) for value in item])
+            continue
+
+        if isinstance(item[0], list):
+            token_matrix = np.array(item, dtype=float)
+            if token_matrix.ndim != 2:
+                raise ClusteringError("Hugging Face token embeddings had an invalid shape")
+            normalized.append(token_matrix.mean(axis=0).tolist())
+            continue
+
+        raise ClusteringError("Hugging Face embeddings response shape was not recognized")
+
+    return normalized
 
 
 class EmbeddingProvider(ABC):
@@ -180,6 +208,98 @@ class LocalEmbeddingProvider(EmbeddingProvider):
         return [embedding for embedding in cached_embeddings if embedding is not None]
 
 
+class HuggingFaceAPIEmbeddingProvider(EmbeddingProvider):
+    """Hosted Hugging Face inference API embedding provider."""
+
+    def __init__(
+        self,
+        model_name: str | None = None,
+        api_key: str | None = None,
+        api_url: str | None = None,
+    ) -> None:
+        settings = get_settings()
+        self.model_name = model_name or settings.embedding_model
+        self.api_key = api_key or settings.huggingface_api_key
+        self.api_url = (api_url or settings.huggingface_api_url).rstrip("/")
+        if not self.api_key:
+            raise ClusteringError(
+                "HUGGINGFACE_API_KEY not configured. Required for hosted Hugging Face embeddings. "
+                "Set it in your .env or switch EMBEDDING_BACKEND to huggingface-local"
+            )
+        self.cache = EmbeddingCache()
+        self._dimension = 0
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    async def embed(self, texts: list[str]) -> list[EmbeddingVector]:
+        if not texts:
+            return []
+
+        cached_embeddings: list[EmbeddingVector | None] = [None] * len(texts)
+        missing_indices: list[int] = []
+        missing_texts: list[str] = []
+
+        for index, text in enumerate(texts):
+            cached = self.cache.get(text)
+            if cached is None:
+                missing_indices.append(index)
+                missing_texts.append(text)
+                continue
+            cached_embeddings[index] = cached
+
+        if not missing_texts:
+            logger.info("Embedding cache hit", provider="huggingface-api", total=len(texts))
+            return [embedding for embedding in cached_embeddings if embedding is not None]
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{self.api_url}/{self.model_name}/pipeline/feature-extraction",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "inputs": missing_texts,
+                        "options": {"wait_for_model": True},
+                    },
+                )
+                response.raise_for_status()
+                new_embeddings = _normalize_huggingface_embeddings(response.json())
+
+            if len(new_embeddings) != len(missing_texts):
+                raise ClusteringError(
+                    "Hugging Face embeddings response count did not match the request",
+                    context={"expected": len(missing_texts), "received": len(new_embeddings)},
+                )
+
+            self._dimension = len(new_embeddings[0]) if new_embeddings else self._dimension
+            for index, text, embedding in zip(missing_indices, missing_texts, new_embeddings, strict=True):
+                self.cache.set(text, embedding)
+                cached_embeddings[index] = embedding
+
+            logger.info(
+                "Embedding batch complete",
+                provider="huggingface-api",
+                total=len(texts),
+                cached=len(texts) - len(missing_texts),
+                computed=len(missing_texts),
+            )
+            return [embedding for embedding in cached_embeddings if embedding is not None]
+        except httpx.HTTPStatusError as exc:
+            raise ClusteringError(
+                f"Hugging Face embedding failed: {exc.response.status_code} {exc.response.text}",
+                context={"model": self.model_name, "text_count": len(texts)},
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise ClusteringError(
+                f"Hugging Face embedding failed: {exc}",
+                context={"model": self.model_name, "text_count": len(texts)},
+            ) from exc
+
+
 @lru_cache(maxsize=4)
 def _get_openai_provider(model: str, api_key: str) -> OpenAIEmbeddingProvider:
     return OpenAIEmbeddingProvider(model=model, api_key=api_key)
@@ -190,6 +310,19 @@ def _get_local_provider(model_name: str) -> LocalEmbeddingProvider:
     return LocalEmbeddingProvider(model_name=model_name)
 
 
+@lru_cache(maxsize=4)
+def _get_huggingface_api_provider(
+    model_name: str,
+    api_key: str,
+    api_url: str,
+) -> HuggingFaceAPIEmbeddingProvider:
+    return HuggingFaceAPIEmbeddingProvider(
+        model_name=model_name,
+        api_key=api_key,
+        api_url=api_url,
+    )
+
+
 def get_embedding_provider() -> EmbeddingProvider:
     """Factory function to get the appropriate embedding provider."""
     settings = get_settings()
@@ -197,4 +330,12 @@ def get_embedding_provider() -> EmbeddingProvider:
         if not settings.openai_api_key:
             return OpenAIEmbeddingProvider()
         return _get_openai_provider(settings.embedding_model, settings.openai_api_key)
+    if settings.embedding_backend == "huggingface-api":
+        if not settings.huggingface_api_key:
+            return HuggingFaceAPIEmbeddingProvider()
+        return _get_huggingface_api_provider(
+            settings.embedding_model,
+            settings.huggingface_api_key,
+            settings.huggingface_api_url,
+        )
     return _get_local_provider(settings.embedding_model)

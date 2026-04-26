@@ -83,6 +83,78 @@ class ReviewClusterer:
         """Count non-noise clusters in an HDBSCAN label array."""
         return len(set(labels) - {-1})
 
+    def _partition_indices(
+        self,
+        reduced: np.ndarray,
+        indices: np.ndarray,
+        parts: int = 2,
+    ) -> list[np.ndarray]:
+        """Split a group along its highest-variance axis."""
+        if len(indices) < parts:
+            return [indices]
+
+        points = reduced[indices]
+        if points.ndim == 1:
+            points = points.reshape(-1, 1)
+
+        axis = int(np.argmax(np.var(points, axis=0)))
+        ordered = indices[np.argsort(points[:, axis], kind="stable")]
+        return [segment for segment in np.array_split(ordered, parts) if len(segment) > 0]
+
+    def _enforce_minimum_clusters(
+        self,
+        reduced: np.ndarray,
+        labels: np.ndarray,
+        target_clusters: int | None,
+    ) -> np.ndarray:
+        """Create deterministic fallback partitions when HDBSCAN under-produces clusters."""
+        if target_clusters is None:
+            return labels
+
+        cluster_count = self._count_clusters(labels)
+        if cluster_count >= target_clusters:
+            return labels
+
+        groups = [
+            np.flatnonzero(labels == label)
+            for label in sorted(set(labels) - {-1})
+        ]
+        noise_group = np.flatnonzero(labels == -1)
+        if noise_group.size > 0:
+            groups.append(noise_group)
+        if not groups:
+            groups = [np.arange(len(labels), dtype=int)]
+
+        groups.sort(key=len, reverse=True)
+
+        while len(groups) < target_clusters:
+            splittable = [index for index, group in enumerate(groups) if len(group) >= 2]
+            if not splittable:
+                break
+
+            split_index = max(splittable, key=lambda index: len(groups[index]))
+            group = groups.pop(split_index)
+            partitions = self._partition_indices(reduced, group)
+            if len(partitions) < 2:
+                groups.insert(split_index, group)
+                break
+            groups.extend(partitions)
+            groups.sort(key=len, reverse=True)
+
+        if len(groups) < target_clusters:
+            return labels
+
+        enforced = np.full(labels.shape, -1, dtype=int)
+        for cluster_id, group in enumerate(groups):
+            enforced[group] = cluster_id
+
+        logger.info(
+            "Applied fallback cluster partitioning",
+            original_clusters=cluster_count,
+            enforced_clusters=len(groups),
+        )
+        return enforced
+
     def _cluster_with_target(
         self,
         reduced: np.ndarray,
@@ -124,7 +196,7 @@ class ReviewClusterer:
                 if cluster_count >= target_clusters:
                     return candidate
 
-        return best_labels
+            return self._enforce_minimum_clusters(reduced, best_labels, target_clusters)
 
     def _find_medoid(self, embeddings: np.ndarray, indices: list[int]) -> int:
         """Find the medoid (closest to centroid) of a cluster."""

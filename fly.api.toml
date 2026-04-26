@@ -11,6 +11,8 @@ primary_region = "iad"
   DOCS_MCP_URL = "http://pulse-agent-docs.internal:5000"
   GMAIL_MCP_URL = "http://pulse-agent-gmail.internal:5001"
   CONFIRM_SEND = "true"
+  EMBEDDING_BACKEND = "huggingface-api"
+  HUGGINGFACE_API_URL = "https://router.huggingface.co/hf-inference/models"
   ALLOWED_ORIGINS = ""
   ALLOWED_ORIGIN_REGEX = "^https://.*\\.vercel\\.app$"
 

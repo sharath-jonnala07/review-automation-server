@@ -305,7 +305,7 @@ class LLMClient:
                         "turn the highest-frequency issues into a concrete fix plan."
                     ),
                 }
-                for theme in themes[:3]
+                for theme in themes
             ]
             if not actions:
                 actions.append(
