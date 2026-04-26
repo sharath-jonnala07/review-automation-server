@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 from pathlib import Path
@@ -49,6 +50,14 @@ def _format_google_error(exc: Exception) -> str:
 
 
 def _load_service_account_info() -> dict[str, Any]:
+    raw_b64 = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_B64")
+    if raw_b64:
+        try:
+            decoded = base64.b64decode(raw_b64).decode("utf-8")
+            return json.loads(decoded)
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON_B64 is not valid base64 JSON") from exc
+
     raw_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
     if raw_json:
         try:
@@ -73,8 +82,8 @@ def _load_service_account_info() -> dict[str, Any]:
 
     if not path.exists():
         raise RuntimeError(
-            "Google service account credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS "
-            "or GOOGLE_SERVICE_ACCOUNT_JSON."
+            "Google service account credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS, "
+            "GOOGLE_SERVICE_ACCOUNT_JSON, or GOOGLE_SERVICE_ACCOUNT_JSON_B64."
         )
 
     return json.loads(path.read_text(encoding="utf-8"))
