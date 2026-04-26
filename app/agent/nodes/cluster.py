@@ -1,5 +1,7 @@
 """Clustering node for LangGraph."""
 
+import asyncio
+
 import structlog
 
 from app.agent.state import AgentState
@@ -25,10 +27,11 @@ async def cluster_node(state: AgentState) -> AgentState:
 
     # Cluster
     clusterer = ReviewClusterer()
-    clusters, _labels = clusterer.cluster_reviews(
+    clusters, _labels = await asyncio.to_thread(
+        clusterer.cluster_reviews,
         embeddings,
         texts,
-        target_clusters=3,
+        3,
     )
 
     logger.info(

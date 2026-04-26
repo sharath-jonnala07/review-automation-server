@@ -149,17 +149,15 @@ class LocalEmbeddingProvider(EmbeddingProvider):
             logger.info("Embedding cache hit", provider="huggingface-local", total=len(texts))
             return [embedding for embedding in cached_embeddings if embedding is not None]
 
-        model = self._load_model()
+        model = await asyncio.to_thread(self._load_model)
 
         # Run in thread pool since sentence-transformers is CPU-bound
-        loop = asyncio.get_running_loop()
-        embeddings = await loop.run_in_executor(
-            None,
+        embeddings = await asyncio.to_thread(
             lambda: model.encode(
                 missing_texts,
                 show_progress_bar=False,
                 normalize_embeddings=True,
-            ),
+            )
         )
 
         computed_embeddings = [emb.tolist() for emb in embeddings]
