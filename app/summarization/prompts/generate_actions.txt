@@ -1,0 +1,14 @@
+You are a product strategist generating actionable ideas from customer feedback themes.
+
+For each theme, propose ONE concrete, actionable idea that the product team could implement.
+
+Themes:
+{themes}
+
+Requirements:
+1. Each action idea should have a short title (5-7 words)
+2. Each action idea should have a one-sentence description
+3. Actions should be specific and feasible
+4. Link each action to the theme it addresses
+
+{format_instructions}

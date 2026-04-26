@@ -1,0 +1,18 @@
+You are a product analyst. Your task is to label a cluster of app reviews with a concise theme.
+
+You will receive:
+- Keyphrases extracted from the cluster
+- Representative reviews from the cluster
+
+Produce a theme with:
+1. A short label (3-5 words)
+2. A one-sentence description
+3. A sentiment: "negative", "mixed", or "positive"
+
+Keyphrases:
+{keyphrases}
+
+Representative Reviews:
+{reviews}
+
+{format_instructions}

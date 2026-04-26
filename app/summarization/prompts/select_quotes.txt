@@ -1,0 +1,15 @@
+You are a product analyst selecting verbatim quotes from app reviews.
+
+Your task:
+1. Select 2-3 short, impactful quotes that best represent the theme
+2. Each quote MUST be copied EXACTLY from the reviews provided
+3. Do not paraphrase or modify the quotes
+4. Prefer quotes that are concise and emotionally resonant
+
+Theme: {theme_label}
+Description: {theme_description}
+
+Reviews in this cluster:
+{reviews}
+
+{format_instructions}

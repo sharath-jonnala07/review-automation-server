@@ -1,0 +1,41 @@
+{
+  "label_theme": {
+    "versions": [
+      {
+        "version": "1.0.0",
+        "hash": "sha256:a1b2c3d4",
+        "file": "app/summarization/prompts/label_theme.txt",
+        "model_tested": "gpt-4o-mini",
+        "performance_score": 0.0,
+        "created_at": "2026-04-25"
+      }
+    ],
+    "latest": "1.0.0"
+  },
+  "select_quotes": {
+    "versions": [
+      {
+        "version": "1.0.0",
+        "hash": "sha256:e5f6g7h8",
+        "file": "app/summarization/prompts/select_quotes.txt",
+        "model_tested": "gpt-4o-mini",
+        "performance_score": 0.0,
+        "created_at": "2026-04-25"
+      }
+    ],
+    "latest": "1.0.0"
+  },
+  "generate_actions": {
+    "versions": [
+      {
+        "version": "1.0.0",
+        "hash": "sha256:i9j0k1l2",
+        "file": "app/summarization/prompts/generate_actions.txt",
+        "model_tested": "gpt-4o-mini",
+        "performance_score": 0.0,
+        "created_at": "2026-04-25"
+      }
+    ],
+    "latest": "1.0.0"
+  }
+}
