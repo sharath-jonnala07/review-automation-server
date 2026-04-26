@@ -8,12 +8,15 @@ from app.mcp_client.docs_ops import DocsPublisher, build_deep_link
 from app.mcp_client.gmail_ops import GmailPublisher
 from app.mcp_client.session import MCPConnectionManager
 from app.renderer.email_renderer import render_email
+from app.services.run_progress import persist_run_stage
 
 logger = structlog.get_logger()
 
 
 async def publish_docs_node(state: AgentState) -> AgentState:
     """Publish to Google Docs."""
+    await persist_run_stage(state["run_id"], "publishing")
+
     if state.get("dry_run"):
         logger.info("Skipping Docs publish for dry run", run_id=state["run_id"])
         return {
@@ -63,6 +66,8 @@ async def publish_docs_node(state: AgentState) -> AgentState:
 
 async def publish_gmail_node(state: AgentState) -> AgentState:
     """Publish to Gmail."""
+    await persist_run_stage(state["run_id"], "publishing")
+
     async with MCPConnectionManager() as mcp:
         publisher = GmailPublisher(mcp)
 

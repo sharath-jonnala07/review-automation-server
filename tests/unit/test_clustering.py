@@ -1,5 +1,6 @@
 """Tests for embeddings and clustering."""
 
+import asyncio
 from pathlib import Path
 
 import numpy as np
@@ -7,7 +8,11 @@ import pytest
 
 from app.clustering.cache import EmbeddingCache
 from app.clustering.clusterer import ReviewClusterer
-from app.clustering.embeddings import _normalize_huggingface_embeddings
+from app.clustering.embeddings import (
+    HOSTED_EMBEDDING_BATCH_SIZE,
+    HuggingFaceAPIEmbeddingProvider,
+    _normalize_huggingface_embeddings,
+)
 from app.core.exceptions import ClusteringError
 
 
@@ -167,3 +172,33 @@ class TestHuggingFaceEmbeddingNormalization:
     def test_rejects_invalid_payloads(self) -> None:
         with pytest.raises(ClusteringError):
             _normalize_huggingface_embeddings({"embedding": [0.1, 0.2]})
+
+
+class TestHuggingFaceAPIEmbeddingProvider:
+    """Hosted provider tests."""
+
+    def test_batches_large_embedding_requests(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Large hosted requests should be broken into stable batches in production."""
+        provider = HuggingFaceAPIEmbeddingProvider(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            api_key="test-key",
+            api_url="https://example.test/models",
+        )
+        provider.cache = EmbeddingCache(cache_dir=tmp_path / "embeddings", namespace="hf-api:test")
+
+        requested_batches: list[list[str]] = []
+
+        async def fake_embed_batch(texts: list[str]) -> list[list[float]]:
+            requested_batches.append(texts)
+            return [[float(index), float(index) + 0.5] for index, _text in enumerate(texts)]
+
+        monkeypatch.setattr(provider, "_embed_batch", fake_embed_batch)
+
+        texts = [f"review-{index}" for index in range(HOSTED_EMBEDDING_BATCH_SIZE + 5)]
+        embeddings = asyncio.run(provider.embed(texts))
+
+        assert len(requested_batches) == 2
+        assert len(requested_batches[0]) == HOSTED_EMBEDDING_BATCH_SIZE
+        assert len(requested_batches[1]) == 5
+        assert len(embeddings) == len(texts)
+        assert provider.dimension == 2

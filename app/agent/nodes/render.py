@@ -6,6 +6,7 @@ from app.agent.state import AgentState
 from app.core.exceptions import RenderError
 from app.renderer.docs_tree import build_doc_requests
 from app.renderer.email_renderer import render_email
+from app.services.run_progress import persist_run_stage
 
 logger = structlog.get_logger()
 
@@ -16,6 +17,7 @@ async def render_node(state: AgentState) -> AgentState:
     if not summary:
         raise RenderError("No summary to render")
 
+    await persist_run_stage(state["run_id"], "rendering")
     logger.info("Rendering started", run_id=state["run_id"])
 
     anchor = f"pulse-{state['product_key']}-{state['iso_week']}"

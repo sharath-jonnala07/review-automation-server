@@ -8,6 +8,7 @@ from app.agent.state import AgentState
 from app.clustering.clusterer import ReviewClusterer
 from app.clustering.embeddings import get_embedding_provider
 from app.core.exceptions import ClusteringError
+from app.services.run_progress import persist_run_stage
 
 logger = structlog.get_logger()
 
@@ -18,6 +19,7 @@ async def cluster_node(state: AgentState) -> AgentState:
     if len(reviews) < 8:
         raise ClusteringError(f"Not enough reviews: {len(reviews)}")
 
+    await persist_run_stage(state["run_id"], "clustering")
     logger.info("Clustering started", run_id=state["run_id"], count=len(reviews))
 
     # Get embeddings

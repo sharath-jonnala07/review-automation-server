@@ -23,8 +23,6 @@ class Cluster:
 class ReviewClusterer:
     """UMAP + HDBSCAN clustering for review embeddings."""
 
-    _keyword_model: object | None = None
-
     def __init__(
         self,
         n_components: int = 15,
@@ -209,27 +207,28 @@ class ReviewClusterer:
     def _extract_keyphrases(
         self, texts: list[str], indices: list[int]
     ) -> list[str]:
-        """Extract keyphrases for a cluster using KeyBERT."""
+        """Extract lightweight TF-IDF keyphrases for a cluster."""
         try:
-            from keybert import KeyBERT
+            from sklearn.feature_extraction.text import TfidfVectorizer
         except ImportError as e:
             raise ClusteringError(
-                "keybert not installed. Install with: uv pip install keybert"
+                "scikit-learn not installed. Install with: uv pip install scikit-learn"
             ) from e
 
-        cluster_texts = [texts[i] for i in indices]
-        combined = " ".join(cluster_texts)
+        cluster_texts = [texts[i].strip() for i in indices if texts[i].strip()]
+        if not cluster_texts:
+            return []
 
-        if ReviewClusterer._keyword_model is None:
-            ReviewClusterer._keyword_model = KeyBERT()
-        kw_model = ReviewClusterer._keyword_model
-        keywords = kw_model.extract_keywords(
-            combined,
-            keyphrase_ngram_range=(1, 2),
+        vectorizer = TfidfVectorizer(
+            ngram_range=(1, 2),
             stop_words="english",
-            top_n=8,
+            max_features=256,
         )
-        return [kw[0] for kw in keywords]
+        matrix = vectorizer.fit_transform(cluster_texts)
+        scores = np.asarray(matrix.mean(axis=0)).ravel()
+        phrases = vectorizer.get_feature_names_out()
+        ranked = np.argsort(scores)[::-1]
+        return [phrases[index] for index in ranked[:8] if scores[index] > 0]
 
     def random_random_state(self) -> int:
         """Return the random state for reproducibility."""

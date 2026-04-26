@@ -19,6 +19,7 @@ logger = structlog.get_logger()
 
 # Type alias for embeddings
 EmbeddingVector = list[float]
+HOSTED_EMBEDDING_BATCH_SIZE = 32
 
 
 def _embedding_cache_namespace(provider: str, model_name: str) -> str:
@@ -242,6 +243,23 @@ class HuggingFaceAPIEmbeddingProvider(EmbeddingProvider):
     def dimension(self) -> int:
         return self._dimension
 
+    async def _embed_batch(self, texts: list[str]) -> list[EmbeddingVector]:
+        """Embed a single hosted batch against Hugging Face."""
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{self.api_url}/{self.model_name}/pipeline/feature-extraction",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "inputs": texts,
+                    "options": {"wait_for_model": True},
+                },
+            )
+            response.raise_for_status()
+            return _normalize_huggingface_embeddings(response.json())
+
     async def embed(self, texts: list[str]) -> list[EmbeddingVector]:
         if not texts:
             return []
@@ -263,31 +281,31 @@ class HuggingFaceAPIEmbeddingProvider(EmbeddingProvider):
             return [embedding for embedding in cached_embeddings if embedding is not None]
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    f"{self.api_url}/{self.model_name}/pipeline/feature-extraction",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "inputs": missing_texts,
-                        "options": {"wait_for_model": True},
-                    },
+            for batch_number, start in enumerate(
+                range(0, len(missing_texts), HOSTED_EMBEDDING_BATCH_SIZE),
+                start=1,
+            ):
+                batch_texts = missing_texts[start : start + HOSTED_EMBEDDING_BATCH_SIZE]
+                batch_indices = missing_indices[start : start + HOSTED_EMBEDDING_BATCH_SIZE]
+                logger.info(
+                    "Embedding batch started",
+                    provider="huggingface-api",
+                    batch=batch_number,
+                    batch_size=len(batch_texts),
+                    total_missing=len(missing_texts),
                 )
-                response.raise_for_status()
-                new_embeddings = _normalize_huggingface_embeddings(response.json())
+                new_embeddings = await self._embed_batch(batch_texts)
 
-            if len(new_embeddings) != len(missing_texts):
-                raise ClusteringError(
-                    "Hugging Face embeddings response count did not match the request",
-                    context={"expected": len(missing_texts), "received": len(new_embeddings)},
-                )
+                if len(new_embeddings) != len(batch_texts):
+                    raise ClusteringError(
+                        "Hugging Face embeddings response count did not match the request",
+                        context={"expected": len(batch_texts), "received": len(new_embeddings)},
+                    )
 
-            self._dimension = len(new_embeddings[0]) if new_embeddings else self._dimension
-            for index, text, embedding in zip(missing_indices, missing_texts, new_embeddings, strict=True):
-                self.cache.set(text, embedding)
-                cached_embeddings[index] = embedding
+                self._dimension = len(new_embeddings[0]) if new_embeddings else self._dimension
+                for index, text, embedding in zip(batch_indices, batch_texts, new_embeddings, strict=True):
+                    self.cache.set(text, embedding)
+                    cached_embeddings[index] = embedding
 
             logger.info(
                 "Embedding batch complete",

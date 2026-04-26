@@ -8,6 +8,7 @@ from app.agent.state import AgentState
 from app.core.exceptions import SummarizationError
 from app.core.models import Window
 from app.core.types import ProductKey
+from app.services.run_progress import persist_run_stage
 from app.summarization.engine import SummarizationEngine
 
 logger = structlog.get_logger()
@@ -21,6 +22,7 @@ async def summarize_node(state: AgentState) -> AgentState:
     if not clusters:
         raise SummarizationError("No clusters to summarize")
 
+    await persist_run_stage(state["run_id"], "summarizing")
     logger.info("Summarization started", run_id=state["run_id"])
 
     engine = SummarizationEngine()
