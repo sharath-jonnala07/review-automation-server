@@ -21,6 +21,11 @@ logger = structlog.get_logger()
 EmbeddingVector = list[float]
 
 
+def _embedding_cache_namespace(provider: str, model_name: str) -> str:
+    """Return a provider/model-specific namespace for embedding cache files."""
+    return f"{provider}:{model_name}"
+
+
 def _normalize_huggingface_embeddings(payload: object) -> list[EmbeddingVector]:
     """Normalize Hugging Face inference payloads into sentence vectors."""
     if not isinstance(payload, list):
@@ -76,7 +81,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
                 "Set it in your .env or switch EMBEDDING_BACKEND to huggingface-local"
             )
         self.client = AsyncOpenAI(api_key=api_key)
-        self.cache = EmbeddingCache()
+        self.cache = EmbeddingCache(namespace=_embedding_cache_namespace("openai", self.model))
 
     @property
     def dimension(self) -> int:
@@ -138,7 +143,9 @@ class LocalEmbeddingProvider(EmbeddingProvider):
         self._model: Any = None
         self._dimension = 1024  # Qwen/Qwen3-Embedding-0.6B default
         self._model_lock = threading.Lock()
-        self.cache = EmbeddingCache()
+        self.cache = EmbeddingCache(
+            namespace=_embedding_cache_namespace("huggingface-local", self.model_name)
+        )
 
     def _load_model(self) -> Any:
         """Lazy-load the sentence-transformers model."""
@@ -226,7 +233,9 @@ class HuggingFaceAPIEmbeddingProvider(EmbeddingProvider):
                 "HUGGINGFACE_API_KEY not configured. Required for hosted Hugging Face embeddings. "
                 "Set it in your .env or switch EMBEDDING_BACKEND to huggingface-local"
             )
-        self.cache = EmbeddingCache()
+        self.cache = EmbeddingCache(
+            namespace=_embedding_cache_namespace("huggingface-api", self.model_name)
+        )
         self._dimension = 0
 
     @property

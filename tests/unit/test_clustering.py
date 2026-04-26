@@ -41,6 +41,16 @@ class TestEmbeddingCache:
         hit_rate = cache.hit_rate(texts)
         assert hit_rate == pytest.approx(2 / 3)
 
+    def test_cache_namespaces_do_not_collide(self, tmp_path: Path) -> None:
+        """Should keep embeddings isolated per provider/model namespace."""
+        local_cache = EmbeddingCache(cache_dir=tmp_path / "embeddings", namespace="hf-local:model-a")
+        api_cache = EmbeddingCache(cache_dir=tmp_path / "embeddings", namespace="hf-api:model-b")
+
+        local_cache.set("same text", [0.1, 0.2, 0.3])
+
+        assert local_cache.get("same text") == [0.1, 0.2, 0.3]
+        assert api_cache.get("same text") is None
+
 
 class TestReviewClusterer:
     """Clustering algorithm tests."""
@@ -119,6 +129,17 @@ class TestReviewClusterer:
         assert len(clusters) == 3
         assert set(labels) == {0, 1, 2}
         assert sorted(len(cluster.review_indices) for cluster in clusters) == [3, 3, 6]
+
+    def test_clusterer_rejects_mixed_embedding_dimensions(self) -> None:
+        """Should fail fast when embeddings with different dimensions are mixed."""
+        clusterer = ReviewClusterer(min_cluster_size=2)
+
+        with pytest.raises(ClusteringError, match="Embedding dimensions were inconsistent"):
+            clusterer.cluster_reviews(
+                embeddings=[[0.1, 0.2], [0.3, 0.4, 0.5]],
+                texts=["review-1", "review-2"],
+                target_clusters=3,
+            )
 
 
 class TestHuggingFaceEmbeddingNormalization:

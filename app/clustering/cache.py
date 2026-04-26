@@ -1,8 +1,9 @@
-"""On-disk embedding cache keyed by SHA1 of text."""
+"""On-disk embedding cache keyed by SHA1 of text and cache namespace."""
 
 import hashlib
 import json
 from pathlib import Path
+import re
 
 import structlog
 
@@ -19,9 +20,11 @@ def _hash_text(text: str) -> str:
 class EmbeddingCache:
     """Disk-based cache for text embeddings."""
 
-    def __init__(self, cache_dir: Path | None = None) -> None:
+    def __init__(self, cache_dir: Path | None = None, namespace: str = "default") -> None:
         settings = get_settings()
-        self.cache_dir = cache_dir or settings.data_dir / "embeddings"
+        normalized_namespace = re.sub(r"[^a-zA-Z0-9._-]+", "_", namespace).strip("._") or "default"
+        base_cache_dir = cache_dir or settings.data_dir / "embeddings"
+        self.cache_dir = base_cache_dir / normalized_namespace
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _cache_path(self, text_hash: str) -> Path:

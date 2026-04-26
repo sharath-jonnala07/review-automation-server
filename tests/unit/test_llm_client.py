@@ -2,6 +2,7 @@
 
 import asyncio
 
+from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
 import pytest
 
@@ -85,3 +86,36 @@ def test_llm_client_blocks_heuristic_after_remote_auth_failure_by_default(
             RuntimeError("Error code: 401 invalid_api_key"),
             remaining_backends,
         )
+
+
+def test_llm_client_uses_heuristic_after_remote_rate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rate-limited local runs should continue with heuristic fallback."""
+    monkeypatch.setenv("GROQ_API_KEY", "rate-limited-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_ALLOW_HEURISTIC_FALLBACK", "true")
+
+    client = LLMClient()
+
+    def raise_rate_limit(_: object) -> object:
+        raise RuntimeError(
+            "Error code: 429 - {'error': {'message': 'Rate limit reached', 'code': 'rate_limit_exceeded'}}"
+        )
+
+    monkeypatch.setattr(client, "_get_remote_llm", lambda backend: RunnableLambda(raise_rate_limit))
+
+    result = asyncio.run(
+        client.structured_call(
+            prompt_template="{format_instructions}",
+            output_schema=ThemeLikeOutput,
+            variables={
+                "keyphrases": "support quality, login issues, trading delays",
+                "reviews": "- Customer support never resolves my issue\n\n- The app feels slow when the market opens",
+            },
+            max_retries=1,
+        )
+    )
+
+    assert result.label
+    assert client.backend_name == "heuristic"

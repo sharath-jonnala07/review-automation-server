@@ -31,6 +31,11 @@ class MCPToolRequest(BaseModel):
 _drafts: dict[str, dict[str, str]] = {}
 
 
+def _normalized_app_password(value: str) -> str:
+    """Return the raw Gmail app password without display spacing."""
+    return "".join(value.split())
+
+
 def _send_email_message(
     to: str,
     subject: str,
@@ -39,8 +44,8 @@ def _send_email_message(
 ) -> dict[str, Any]:
     """Send an email immediately via Gmail SMTP."""
     _validate_credentials()
-    gmail_sender = os.getenv("GMAIL_SENDER", "")
-    gmail_app_password = os.getenv("GMAIL_APP_PASSWORD", "")
+    gmail_sender = os.getenv("GMAIL_SENDER", "").strip()
+    gmail_app_password = _normalized_app_password(os.getenv("GMAIL_APP_PASSWORD", ""))
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -60,8 +65,8 @@ def _send_email_message(
 
 def _validate_credentials() -> None:
     """Validate SMTP credentials are configured."""
-    gmail_sender = os.getenv("GMAIL_SENDER", "")
-    gmail_app_password = os.getenv("GMAIL_APP_PASSWORD", "")
+    gmail_sender = os.getenv("GMAIL_SENDER", "").strip()
+    gmail_app_password = _normalized_app_password(os.getenv("GMAIL_APP_PASSWORD", ""))
     if not gmail_sender:
         raise RuntimeError(
             "GMAIL_SENDER is required. Set it to your Gmail address in .env"

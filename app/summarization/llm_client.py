@@ -26,6 +26,13 @@ AUTH_FAILURE_SNIPPETS = (
     "unauthorized",
     "error code: 401",
 )
+RATE_LIMIT_SNIPPETS = (
+    "rate_limit_exceeded",
+    "rate limit reached",
+    "error code: 429",
+    "tokens per day",
+    "requests per minute",
+)
 NEGATIVE_HINTS = {
     "bug",
     "crash",
@@ -208,6 +215,11 @@ class LLMClient:
         message = str(error).lower()
         return any(snippet in message for snippet in AUTH_FAILURE_SNIPPETS)
 
+    def _is_rate_limit_failure(self, error: Exception) -> bool:
+        """Return whether an exception points to a temporary quota or rate cap."""
+        message = str(error).lower()
+        return any(snippet in message for snippet in RATE_LIMIT_SNIPPETS)
+
     def _raise_if_heuristic_auth_fallback_is_disabled(
         self,
         error: Exception,
@@ -386,6 +398,12 @@ class LLMClient:
                             self._backends[backend_index + 1 :],
                         )
                         break
+                    if self._is_rate_limit_failure(error):
+                        logger.warning(
+                            "LLM backend rate-limited, trying fallback",
+                            backend=backend.name,
+                        )
+                        break
                     if attempt == max_retries - 1:
                         raise SummarizationError(
                             f"Failed to get valid structured output after {max_retries} attempts: {error}"
@@ -434,6 +452,12 @@ class LLMClient:
                         self._raise_if_heuristic_auth_fallback_is_disabled(
                             error,
                             self._backends[backend_index + 1 :],
+                        )
+                        break
+                    if self._is_rate_limit_failure(error):
+                        logger.warning(
+                            "LLM backend rate-limited, trying fallback",
+                            backend=backend.name,
                         )
                         break
                     if attempt == max_retries - 1:

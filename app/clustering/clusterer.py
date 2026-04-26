@@ -258,6 +258,16 @@ class ReviewClusterer:
                 f"Not enough reviews to cluster: {len(embeddings)} < {self.min_cluster_size}"
             )
 
+        embedding_lengths = {len(embedding) for embedding in embeddings}
+        if len(embedding_lengths) != 1:
+            raise ClusteringError(
+                "Embedding dimensions were inconsistent across reviews",
+                context={
+                    "distinct_dimensions": sorted(embedding_lengths),
+                    "count": len(embeddings),
+                },
+            )
+
         embeddings_array = np.array(embeddings)
 
         # Dimensionality reduction
