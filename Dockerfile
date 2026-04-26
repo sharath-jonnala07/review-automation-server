@@ -7,6 +7,7 @@ RUN pip install uv
 
 # Copy dependency definitions
 COPY pyproject.toml ./
+COPY README.md ./
 RUN mkdir -p app && touch app/__init__.py
 
 # Install dependencies
