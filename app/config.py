@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     app_version: str = Field(default="0.1.0")
     debug: bool = Field(default=False)
     allowed_origins_csv: str | None = Field(default=None, alias="ALLOWED_ORIGINS")
+    allowed_origin_regex: str | None = Field(default=None, alias="ALLOWED_ORIGIN_REGEX")
 
     @field_validator("debug", mode="before")
     @classmethod

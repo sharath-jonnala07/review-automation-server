@@ -11,11 +11,17 @@ primary_region = "iad"
   DOCS_MCP_URL = "http://pulse-agent-docs.internal:5000"
   GMAIL_MCP_URL = "http://pulse-agent-gmail.internal:5001"
   CONFIRM_SEND = "true"
-  ALLOWED_ORIGINS = "https://pulse-agent-web.fly.dev"
+  ALLOWED_ORIGINS = ""
+  ALLOWED_ORIGIN_REGEX = "^https://.*\\.vercel\\.app$"
 
 [[mounts]]
   source = "pulse_api_data"
   destination = "/data"
+
+[[vm]]
+  memory = "2048mb"
+  cpu_kind = "shared"
+  cpus = 1
 
 [http_service]
   internal_port = 8000
